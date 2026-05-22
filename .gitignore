@@ -1,0 +1,35 @@
+# Bancos SQLite (recriados automaticamente no primeiro start)
+*.db
+*.db-wal
+*.db-shm
+
+# Ambiente virtual Python
+.venv/
+venv/
+env/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Dados TACO (arquivo Excel opcional — dados embutidos no taco_setup.py)
+data/TACO_4ed.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
