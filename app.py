@@ -16,22 +16,35 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 
+def _carregar_taco_setup():
+    """Importa o módulo taco_setup dinamicamente."""
+    import importlib.util
+    data_setup = os.path.join(ROOT_DIR, "data", "taco_setup.py")
+    spec = importlib.util.spec_from_file_location("taco_setup", data_setup)
+    mod  = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def inicializar_banco():
-    """Executa setup do banco na primeira execução."""
+    """Executa setup do banco na primeira execução com feedback visual por etapas."""
     taco_db = os.path.join(ROOT_DIR, "taco.db")
     app_db  = os.path.join(ROOT_DIR, "nutri_calc.db")
     if not os.path.exists(taco_db) or not os.path.exists(app_db):
-        with st.spinner("Inicializando banco de dados (primeira execução)..."):
+        with st.status("Preparando NutriCalc P&D pela primeira vez...", expanded=True) as status:
             try:
-                data_setup = os.path.join(ROOT_DIR, "data", "taco_setup.py")
-                import importlib.util
-                spec = importlib.util.spec_from_file_location("taco_setup", data_setup)
-                mod  = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
+                st.write("Carregando módulo de dados TACO...")
+                mod = _carregar_taco_setup()
+
+                st.write("Criando banco de alimentos (1.082 registros TACO + TBCA/USDA)...")
                 mod.criar_taco_db()
+
+                st.write("Criando banco de receitas e fornecedores...")
                 mod.criar_app_db()
-                st.success("Banco de dados inicializado com sucesso.")
+
+                status.update(label="Sistema pronto.", state="complete", expanded=False)
             except Exception as e:
+                status.update(label="Erro na inicialização.", state="error")
                 st.error(f"Erro ao inicializar banco de dados: {e}")
                 st.stop()
 
@@ -75,6 +88,26 @@ def _get_db_count() -> int:
 _db_count = _get_db_count()
 
 sty.render_page_header(_db_count)
+
+# Banner de aviso sobre armazenamento efêmero (sempre visível — SQLite é local à sessão)
+st.markdown("""
+<div style="
+    background:var(--warning-bg);
+    border:1px solid rgba(158,106,3,0.4);
+    border-left:3px solid #9E6A03;
+    border-radius:var(--radius-md);
+    padding:0.55rem 1rem;
+    color:#E3B341;
+    font-size:0.78rem;
+    line-height:1.6;
+    margin-bottom:1rem;
+">
+    <strong>Armazenamento temporário:</strong> receitas e ingredientes salvos
+    nesta sessão serão perdidos quando o servidor reiniciar (após ~1h sem uso
+    no Streamlit Cloud). <strong>Exporte sempre seu trabalho em Excel</strong>
+    ou use o botão <em>Exportar Backup</em> na aba "Receitas Salvas".
+</div>
+""", unsafe_allow_html=True)
 
 
 def _init_session():
@@ -219,7 +252,7 @@ with tab1:
 
         opcoes_busca = []
         mapa_busca   = {}
-        if termo and len(termo.strip()) >= 2:
+        if termo and len(termo.strip()) >= 3:
             candidatos = db.buscar_ingrediente(termo, limite=15)
             for c in candidatos:
                 label = f"[{c['fonte']}] {c['nome']} ({c['score']}%)"
@@ -235,8 +268,10 @@ with tab1:
                 label_visibility="collapsed",
             )
             ingrediente_selecionado = mapa_busca.get(escolha)
-        elif termo and len(termo.strip()) >= 2:
+        elif termo and len(termo.strip()) >= 3:
             st.caption("Nenhum ingrediente encontrado. Verifique o nome ou cadastre em 'Ingredientes de Fornecedor'.")
+        elif termo and len(termo.strip()) < 3:
+            st.caption("Digite pelo menos 3 caracteres para buscar.")
 
         with c_unit:
             unidade = st.selectbox(
@@ -361,6 +396,9 @@ with tab1:
             label_visibility="collapsed",
             key="upload_ficha",
         )
+        _backend = prs.PDF_BACKEND
+        _backend_label = "pymupdf (OCR ativo)" if _backend == "pymupdf" else "pdfplumber (sem OCR)"
+        st.caption(f"Leitor de PDF ativo: **{_backend_label}**")
 
         if arquivo is not None:
             if st.button("Extrair Ingredientes", key="btn_extrair"):
@@ -1115,6 +1153,52 @@ with tab3:
                         if st.session_state.receita_editando_id == rid_del:
                             st.session_state.receita_editando_id = None
                         st.rerun()
+
+        sty.render_divider()
+        st.markdown("#### Backup de Dados")
+        st.caption(
+            "O servidor reinicia a cada ~1 hora sem uso e os dados são apagados. "
+            "Exporte um backup antes de encerrar a sessão."
+        )
+        col_exp, col_imp = st.columns(2)
+
+        with col_exp:
+            st.markdown("**Exportar Backup**")
+            if st.button("Gerar arquivo de backup", use_container_width=True, key="btn_gerar_backup"):
+                try:
+                    backup_bytes = db.export_backup()
+                    st.session_state["backup_bytes"] = backup_bytes
+                except Exception as ex:
+                    st.error(f"Erro ao gerar backup: {ex}")
+            if "backup_bytes" in st.session_state and st.session_state["backup_bytes"]:
+                st.download_button(
+                    label="⬇️ Baixar backup (.json)",
+                    data=st.session_state["backup_bytes"],
+                    file_name="nutri_calc_backup.json",
+                    mime="application/json",
+                    use_container_width=True,
+                    key="btn_dl_backup",
+                )
+
+        with col_imp:
+            st.markdown("**Importar Backup**")
+            arq_backup = st.file_uploader(
+                "Selecionar arquivo de backup",
+                type=["json"],
+                key="upload_backup",
+                label_visibility="collapsed",
+            )
+            if arq_backup is not None:
+                if st.button("Importar", use_container_width=True, key="btn_importar_backup"):
+                    try:
+                        resultado = db.import_backup(arq_backup.read())
+                        st.success(
+                            f"Backup importado: {resultado['receitas']} receita(s) e "
+                            f"{resultado['ingredientes']} ingrediente(s) de fornecedor restaurados."
+                        )
+                        st.rerun()
+                    except Exception as ex:
+                        st.error(f"Erro ao importar backup: {ex}")
 
     except Exception as e:
         st.error(f"Erro ao carregar receitas: {e}")

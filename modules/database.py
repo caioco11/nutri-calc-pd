@@ -513,3 +513,144 @@ def salvar_densidade(nome: str, densidade: float, fonte: str = "manual"):
     )
     conn.commit()
     conn.close()
+
+
+# ─── Backup / Restauração ─────────────────────────────────────────────────────
+
+def export_backup() -> bytes:
+    """
+    Exporta todas as receitas e ingredientes de fornecedor como JSON.
+    Retorna bytes prontos para st.download_button().
+    """
+    import json
+    from datetime import datetime
+
+    backup: dict = {
+        "versao": "1.0",
+        "timestamp": datetime.now().isoformat(),
+        "receitas": [],
+        "ingredientes_fornecedor": [],
+    }
+
+    conn = _conn_app()
+
+    receitas = conn.execute("SELECT * FROM receitas ORDER BY id").fetchall()
+    for r in receitas:
+        rec = dict(r)
+        ings = conn.execute(
+            "SELECT * FROM receita_ingredientes WHERE receita_id=? ORDER BY ordem",
+            (r["id"],),
+        ).fetchall()
+        rec["ingredientes"] = [dict(i) for i in ings]
+        backup["receitas"].append(rec)
+
+    forn = conn.execute(
+        "SELECT * FROM ingredientes_fornecedor ORDER BY nome_comercial"
+    ).fetchall()
+    backup["ingredientes_fornecedor"] = [dict(f) for f in forn]
+
+    conn.close()
+    return json.dumps(backup, ensure_ascii=False, indent=2, default=str).encode("utf-8")
+
+
+def import_backup(json_bytes: bytes) -> dict:
+    """
+    Restaura receitas e ingredientes de fornecedor a partir de um backup JSON.
+    Valida o schema antes de inserir.
+    Retorna {"receitas": int, "ingredientes": int} com contadores importados.
+    Lança ValueError para arquivos malformados.
+    """
+    import json
+
+    try:
+        data = json.loads(json_bytes.decode("utf-8"))
+    except Exception:
+        raise ValueError("Arquivo inválido — não é um JSON legível.")
+
+    if not isinstance(data, dict):
+        raise ValueError("Arquivo inválido — esperado um objeto JSON na raiz.")
+    if "receitas" not in data or "ingredientes_fornecedor" not in data:
+        raise ValueError(
+            "Arquivo inválido — chaves 'receitas' e 'ingredientes_fornecedor' ausentes."
+        )
+    if not isinstance(data["receitas"], list) or not isinstance(data["ingredientes_fornecedor"], list):
+        raise ValueError("Arquivo inválido — 'receitas' e 'ingredientes_fornecedor' devem ser listas.")
+
+    conn = _conn_app()
+    n_receitas = 0
+    n_forn = 0
+
+    try:
+        # ── Ingredientes de fornecedor ──────────────────────────────────────
+        cols_forn = ["nome_comercial", "nome_generico", "fabricante", "observacoes"] + NUTRIENTES
+        ph_forn   = ", ".join(["?" for _ in cols_forn])
+        col_str_forn = ", ".join(cols_forn)
+
+        for forn_item in data["ingredientes_fornecedor"]:
+            if not isinstance(forn_item, dict) or "nome_comercial" not in forn_item:
+                continue
+            vals = [forn_item.get(c) for c in cols_forn]
+            try:
+                conn.execute(
+                    f"INSERT OR IGNORE INTO ingredientes_fornecedor ({col_str_forn}) VALUES ({ph_forn})",
+                    vals,
+                )
+                n_forn += 1
+            except Exception:
+                pass
+
+        # ── Receitas ────────────────────────────────────────────────────────
+        for receita in data["receitas"]:
+            if not isinstance(receita, dict) or "nome_produto" not in receita:
+                continue
+            try:
+                cur = conn.execute(
+                    """INSERT INTO receitas
+                       (nome_produto, porcao_gramas, num_porcoes, medida_caseira, observacoes)
+                       VALUES (?,?,?,?,?)""",
+                    (
+                        receita.get("nome_produto"),
+                        receita.get("porcao_gramas", 100),
+                        receita.get("num_porcoes"),
+                        receita.get("medida_caseira"),
+                        receita.get("observacoes"),
+                    ),
+                )
+                novo_rid = cur.lastrowid
+
+                for ing in receita.get("ingredientes", []):
+                    if not isinstance(ing, dict) or "nome_ingrediente" not in ing:
+                        continue
+                    conn.execute(
+                        """INSERT INTO receita_ingredientes
+                           (receita_id, nome_ingrediente, fonte, fonte_id, quantidade_gramas,
+                            eh_subrecita, subrecita_id, ordem,
+                            unidade_original, quantidade_original, densidade_utilizada)
+                           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            novo_rid,
+                            ing.get("nome_ingrediente"),
+                            ing.get("fonte", "TACO"),
+                            ing.get("fonte_id"),
+                            float(ing.get("quantidade_gramas") or 0),
+                            ing.get("eh_subrecita", 0),
+                            ing.get("subrecita_id"),
+                            ing.get("ordem", 0),
+                            ing.get("unidade_original", "g"),
+                            ing.get("quantidade_original"),
+                            ing.get("densidade_utilizada", 1.0),
+                        ),
+                    )
+
+                n_receitas += 1
+            except Exception:
+                pass
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise RuntimeError(f"Erro ao importar backup: {e}")
+    finally:
+        conn.close()
+
+    return {"receitas": n_receitas, "ingredientes": n_forn}

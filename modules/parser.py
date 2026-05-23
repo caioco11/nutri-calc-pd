@@ -9,6 +9,13 @@ import io
 import pandas as pd
 from typing import Any
 
+# Detecta qual backend PDF está disponível (usado para info na UI)
+try:
+    import fitz as _fitz_check  # noqa: F401
+    PDF_BACKEND = "pymupdf"
+except ImportError:
+    PDF_BACKEND = "pdfplumber"
+
 
 def parse_ficha_tecnica(arquivo_bytes: bytes, extensao: str) -> list[dict]:
     """
