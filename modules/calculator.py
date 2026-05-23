@@ -1,6 +1,7 @@
 """
 calculator.py — Motor de Cálculo Nutricional
 Implementa toda a lógica de cálculo conforme RDC 429/2020 (ANVISA).
+calcular_composicao_receita aceita: ingredientes, receita_id (opcional), validar_taco (opcional).
 """
 
 from __future__ import annotations
