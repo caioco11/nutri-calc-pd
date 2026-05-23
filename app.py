@@ -74,9 +74,12 @@ def inicializar_banco():
 
 st.set_page_config(
     page_title="NutriCalc P&D",
-    page_icon="N",
+    page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",
+    menu_items={
+        "About": "**NutriCalc P&D** v2.0 · Cálculo de Tabelas Nutricionais · ANVISA RDC 429/2020",
+    },
 )
 
 from modules import style as sty
@@ -112,23 +115,23 @@ _db_count = _get_db_count()
 
 sty.render_page_header(_db_count)
 
-# Banner de aviso sobre armazenamento efêmero (sempre visível — SQLite é local à sessão)
+# Banner de aviso sobre armazenamento efêmero
 st.markdown("""
 <div style="
-    background:var(--warning-bg);
-    border:1px solid rgba(158,106,3,0.4);
-    border-left:3px solid #9E6A03;
-    border-radius:var(--radius-md);
-    padding:0.55rem 1rem;
-    color:#E3B341;
-    font-size:0.78rem;
+    background:#1A1200;
+    border:0.5px solid #5A3A00;
+    border-radius:8px;
+    padding:10px 14px;
+    margin-bottom:16px;
+    font-size:11px;
+    color:#EF9F27;
     line-height:1.6;
-    margin-bottom:1rem;
 ">
-    <strong>Armazenamento temporário:</strong> receitas e ingredientes salvos
-    nesta sessão serão perdidos quando o servidor reiniciar (após ~1h sem uso
-    no Streamlit Cloud). <strong>Exporte sempre seu trabalho em Excel</strong>
-    ou use o botão <em>Exportar Backup</em> na aba "Receitas Salvas".
+  <strong style="color:#FAC775;">Armazenamento temporário:</strong>
+  receitas e ingredientes salvos nesta sessão serão perdidos quando o servidor reiniciar
+  (após ~1h sem uso no Streamlit Cloud).
+  <strong>Exporte sempre seu trabalho em Excel</strong> ou use o botão
+  <em>Exportar Backup</em> na aba "Receitas Salvas".
 </div>
 """, unsafe_allow_html=True)
 
@@ -156,33 +159,7 @@ _init_session()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
-    <div style="padding:0.75rem 0 0.5rem">
-        <div style="font-size:1.1rem;font-weight:700;letter-spacing:-0.02em">
-            Nutri<span style="color:var(--accent)">Calc</span> P&amp;D
-        </div>
-        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:3px">v2.0 · Uso Interno</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.divider()
-    st.markdown('<div class="nc-section-label">Status do Sistema</div>', unsafe_allow_html=True)
-    st.markdown(f"""
-    <div style="font-size:0.8rem;color:var(--text-secondary);line-height:2">
-        <span style="color:#3FB950">&#9679;</span> Banco ativo: {_db_count:,} alimentos<br>
-        Padrão: ANVISA RDC 429/2020<br>
-        Fontes: TACO 4ª Ed. + TBCA/USDA
-    </div>
-    """, unsafe_allow_html=True)
-    st.divider()
-    st.markdown('<div class="nc-section-label">Aviso Legal</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div style="font-size:0.72rem;color:var(--text-muted);line-height:1.7">
-        Estimativa para uso interno em P&amp;D.<br>
-        Obrigatório: validação por nutricionista<br>
-        habilitado (CRN) antes de uso em<br>
-        rótulo comercial.
-    </div>
-    """, unsafe_allow_html=True)
+    sty.render_sidebar(_db_count)
 
 # ── Abas principais ────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["Nova Receita", "Ingredientes de Fornecedor", "Receitas Salvas"])
