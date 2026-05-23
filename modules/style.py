@@ -41,12 +41,16 @@ _GLOBAL_CSS = """
 .material-icons,
 span.st-emotion-cache-1dqusnk,
 span.st-emotion-cache-1c9yjad,
+span.st-emotion-cache-2x5h05,
 span[class*="ed4y4ls"],
+span[class*="epifhcv"],
+span[class*="2x5h05"],
 [data-testid="collapsedControl"] span,
 [data-testid="expandedControl"] span,
 button[data-testid="baseButton-header"] span,
 .st-emotion-cache-1dqusnk,
-.st-emotion-cache-1c9yjad {
+.st-emotion-cache-1c9yjad,
+.st-emotion-cache-2x5h05 {
     font-family: 'Material Icons' !important;
     font-size: 24px !important;
     font-style: normal !important;
@@ -60,6 +64,20 @@ button[data-testid="baseButton-header"] span,
     -webkit-font-smoothing: antialiased !important;
 }
 
+/* ── Cobertura universal de ícones Streamlit ──────────────────────────────── */
+[data-testid="collapsedControl"] span,
+[data-testid="collapsedControl"] span *,
+[data-testid="expandedControl"] span,
+[data-testid="expandedControl"] span *,
+.st-emotion-cache-rvjfsj span,
+.st-emotion-cache-8ezv7j span,
+.eelgd2m10 span,
+.e7msn5c15 span,
+[class*="eelgd2m"] span,
+[class*="e7msn5c"] span {
+    font-family: 'Material Icons' !important;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 .stApp {
     background-color: var(--bg-primary) !important;
@@ -71,7 +89,7 @@ button[data-testid="baseButton-header"] span,
 body, p, div {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
-span:not(.material-icons):not([class*="ed4y4ls"]):not([class*="icon"]) {
+span:not(.material-icons):not([class*="ed4y4ls"]):not([class*="epifhcv"]):not([class*="2x5h05"]):not([class*="icon"]) {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
 h1, h2, h3, h4, h5, h6 {
