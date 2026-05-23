@@ -34,6 +34,32 @@ _TOKENS = """
 """
 
 _GLOBAL_CSS = """
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons+Outlined');
+
+/* ── Proteção de ícones Material Icons ────────────────────────────────────── */
+.material-icons,
+span.st-emotion-cache-1dqusnk,
+span.st-emotion-cache-1c9yjad,
+span[class*="ed4y4ls"],
+[data-testid="collapsedControl"] span,
+[data-testid="expandedControl"] span,
+button[data-testid="baseButton-header"] span,
+.st-emotion-cache-1dqusnk,
+.st-emotion-cache-1c9yjad {
+    font-family: 'Material Icons' !important;
+    font-size: 24px !important;
+    font-style: normal !important;
+    font-weight: normal !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    display: inline-flex !important;
+    -webkit-font-feature-settings: 'liga' !important;
+    font-feature-settings: 'liga' !important;
+    -webkit-font-smoothing: antialiased !important;
+}
+
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 .stApp {
     background-color: var(--bg-primary) !important;
@@ -42,7 +68,10 @@ _GLOBAL_CSS = """
     padding: 1.5rem 2rem 3rem !important;
     max-width: 1280px;
 }
-body, p, div, span {
+body, p, div {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
+}
+span:not(.material-icons):not([class*="ed4y4ls"]):not([class*="icon"]) {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
 h1, h2, h3, h4, h5, h6 {
@@ -100,6 +129,8 @@ div[data-baseweb="textarea"] textarea {
     font-size: 0.875rem !important;
     font-weight: 500 !important;
     transition: border-color 0.15s ease, color 0.15s ease !important;
+    white-space: nowrap !important;
+    min-width: fit-content !important;
 }
 .stButton > button:hover {
     border-color: var(--accent) !important;
@@ -141,6 +172,21 @@ details[data-testid="stExpander"] {
 details[data-testid="stExpander"] summary {
     color: var(--text-secondary) !important;
     font-size: 0.875rem !important;
+}
+/* Corrige posicionamento de ícones em expanders */
+[data-testid="stExpander"] span[class*="cache"],
+.streamlit-expanderHeader span[class*="cache"] {
+    position: relative !important;
+    z-index: 0 !important;
+    vertical-align: middle !important;
+    margin-right: 8px !important;
+}
+/* Garante que texto de campos não seja sobreposto */
+[data-testid="stExpander"] p,
+[data-testid="stExpander"] label,
+.streamlit-expanderContent p {
+    position: relative !important;
+    z-index: 1 !important;
 }
 
 /* ── Divider ──────────────────────────────────────────────────────────────── */

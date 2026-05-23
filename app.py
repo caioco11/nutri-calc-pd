@@ -263,7 +263,7 @@ with tab1:
     # ── Modo A — Entrada Manual ───────────────────────────────────────────────
     if modo == "Manual (item a item)":
         st.markdown("**Adicionar Ingrediente**")
-        c_busca, c_qtd, c_unit, c_btn = st.columns([4, 1.5, 1, 1])
+        c_busca, c_qtd, c_unit, c_btn = st.columns([4, 1.5, 1, 2])
 
         with c_busca:
             termo = st.text_input(
