@@ -76,7 +76,7 @@ st.set_page_config(
     page_title="NutriCalc P&D",
     page_icon="N",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 from modules import style as sty

@@ -34,50 +34,6 @@ _TOKENS = """
 """
 
 _GLOBAL_CSS = """
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons+Outlined');
-
-/* ── Proteção de ícones Material Icons ────────────────────────────────────── */
-.material-icons,
-span.st-emotion-cache-1dqusnk,
-span.st-emotion-cache-1c9yjad,
-span.st-emotion-cache-2x5h05,
-span[class*="ed4y4ls"],
-span[class*="epifhcv"],
-span[class*="2x5h05"],
-[data-testid="collapsedControl"] span,
-[data-testid="expandedControl"] span,
-button[data-testid="baseButton-header"] span,
-.st-emotion-cache-1dqusnk,
-.st-emotion-cache-1c9yjad,
-.st-emotion-cache-2x5h05 {
-    font-family: 'Material Icons' !important;
-    font-size: 24px !important;
-    font-style: normal !important;
-    font-weight: normal !important;
-    line-height: 1 !important;
-    letter-spacing: normal !important;
-    text-transform: none !important;
-    display: inline-flex !important;
-    -webkit-font-feature-settings: 'liga' !important;
-    font-feature-settings: 'liga' !important;
-    -webkit-font-smoothing: antialiased !important;
-}
-
-/* ── Cobertura universal de ícones Streamlit ──────────────────────────────── */
-[data-testid="collapsedControl"] span,
-[data-testid="collapsedControl"] span *,
-[data-testid="expandedControl"] span,
-[data-testid="expandedControl"] span *,
-.st-emotion-cache-rvjfsj span,
-.st-emotion-cache-8ezv7j span,
-.eelgd2m10 span,
-.e7msn5c15 span,
-[class*="eelgd2m"] span,
-[class*="e7msn5c"] span {
-    font-family: 'Material Icons' !important;
-}
-
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 .stApp {
     background-color: var(--bg-primary) !important;
@@ -86,10 +42,15 @@ button[data-testid="baseButton-header"] span,
     padding: 1.5rem 2rem 3rem !important;
     max-width: 1280px;
 }
-body, p, div {
+/* Aplica fonte apenas em elementos de texto — spans deliberadamente excluídos
+   para não sobrescrever ícones Material Icons do Streamlit (sidebar toggle,
+   expander arrows) que usam font-family: 'Material Symbols Rounded'. */
+html, body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
-span:not(.material-icons):not([class*="ed4y4ls"]):not([class*="epifhcv"]):not([class*="2x5h05"]):not([class*="icon"]) {
+p, label, div[class*="stMarkdown"], div[class*="stText"],
+div[data-testid="stMarkdownContainer"],
+div[data-testid="stText"] {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
 }
 h1, h2, h3, h4, h5, h6 {
@@ -190,21 +151,6 @@ details[data-testid="stExpander"] {
 details[data-testid="stExpander"] summary {
     color: var(--text-secondary) !important;
     font-size: 0.875rem !important;
-}
-/* Corrige posicionamento de ícones em expanders */
-[data-testid="stExpander"] span[class*="cache"],
-.streamlit-expanderHeader span[class*="cache"] {
-    position: relative !important;
-    z-index: 0 !important;
-    vertical-align: middle !important;
-    margin-right: 8px !important;
-}
-/* Garante que texto de campos não seja sobreposto */
-[data-testid="stExpander"] p,
-[data-testid="stExpander"] label,
-.streamlit-expanderContent p {
-    position: relative !important;
-    z-index: 1 !important;
 }
 
 /* ── Divider ──────────────────────────────────────────────────────────────── */
