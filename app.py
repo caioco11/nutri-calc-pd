@@ -26,21 +26,44 @@ def _carregar_taco_setup():
     return mod
 
 
+def _carregar_tbca_setup():
+    """Importa o módulo tbca_setup dinamicamente."""
+    import importlib.util
+    tbca_setup_path = os.path.join(ROOT_DIR, "data", "tbca_setup.py")
+    spec = importlib.util.spec_from_file_location("tbca_setup", tbca_setup_path)
+    mod  = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def inicializar_banco():
     """Executa setup do banco na primeira execução com feedback visual por etapas."""
     taco_db = os.path.join(ROOT_DIR, "taco.db")
     app_db  = os.path.join(ROOT_DIR, "nutri_calc.db")
-    if not os.path.exists(taco_db) or not os.path.exists(app_db):
-        with st.status("Preparando NutriCalc P&D pela primeira vez...", expanded=True) as status:
+    tbca_db = os.path.join(ROOT_DIR, "tbca.db")
+    precisa_init = not os.path.exists(taco_db) or not os.path.exists(app_db)
+    precisa_tbca = not os.path.exists(tbca_db)
+
+    if precisa_init or precisa_tbca:
+        with st.status("Preparando NutriCalc P&D...", expanded=True) as status:
             try:
-                st.write("Carregando módulo de dados TACO...")
-                mod = _carregar_taco_setup()
+                if precisa_init:
+                    st.write("Carregando módulo de dados TACO...")
+                    mod = _carregar_taco_setup()
 
-                st.write("Criando banco de alimentos (1.082 registros TACO + TBCA/USDA)...")
-                mod.criar_taco_db()
+                    st.write("Criando banco de alimentos (1.082 registros TACO + TBCA/USDA)...")
+                    mod.criar_taco_db()
 
-                st.write("Criando banco de receitas e fornecedores...")
-                mod.criar_app_db()
+                    st.write("Criando banco de receitas e fornecedores...")
+                    mod.criar_app_db()
+
+                if precisa_tbca:
+                    st.write("Carregando base TBCA — USP (validação cruzada)...")
+                    try:
+                        tbca_mod = _carregar_tbca_setup()
+                        tbca_mod.criar_tbca_db()
+                    except Exception as e_tbca:
+                        st.warning(f"TBCA não carregada: {e_tbca}. Validação cruzada desativada.")
 
                 status.update(label="Sistema pronto.", state="complete", expanded=False)
             except Exception as e:
@@ -699,8 +722,11 @@ with tab1:
         if not erros:
             with st.spinner("Calculando composição nutricional..."):
                 try:
+                    rid_atual = st.session_state.get("receita_editando_id")
                     resultado_bruto = calc.calcular_composicao_receita(
-                        st.session_state.ingredientes
+                        st.session_state.ingredientes,
+                        receita_id=rid_atual,
+                        validar_taco=True,
                     )
                     tabela = calc.montar_tabela_rotulo(
                         nome_produto=nome_produto.strip(),
@@ -717,13 +743,14 @@ with tab1:
                         resultado_bruto["ingredientes_detalhes"]
                     )
                     st.session_state.resultado_calculo = {
-                        "tabela":         tabela,
-                        "detalhes":       detalhes_contrib,
-                        "peso_total":     resultado_bruto["peso_total_gramas"],
-                        "nome_produto":   nome_produto.strip(),
-                        "porcao_g":       porcao_g,
-                        "num_porcoes":    int(num_porcoes),
-                        "medida_caseira": medida_caseira.strip() or None,
+                        "tabela":             tabela,
+                        "detalhes":           detalhes_contrib,
+                        "peso_total":         resultado_bruto["peso_total_gramas"],
+                        "nome_produto":       nome_produto.strip(),
+                        "porcao_g":           porcao_g,
+                        "num_porcoes":        int(num_porcoes),
+                        "medida_caseira":     medida_caseira.strip() or None,
+                        "alertas_validacao":  resultado_bruto.get("alertas_validacao", []),
                     }
                 except Exception as e:
                     st.error(f"Erro no cálculo: {str(e)}")
@@ -795,6 +822,70 @@ with tab1:
 
         st.caption("*%VD com base em dieta de 2.000 kcal. **Valor Diário não estabelecido.")
         sty.render_legal_notice()
+
+        # ── Rastreabilidade das Fontes ────────────────────────────────────────
+        alertas_val = res.get("alertas_validacao", [])
+        detalhes_sem_alerta = [
+            d for d in res["detalhes"]
+            if not d.get("validacao", {}).get("triangulacao_aplicada")
+        ]
+
+        with st.expander(
+            f"Rastreabilidade das Fontes"
+            + (f"  ·  ⚠️ {len(alertas_val)} ingrediente(s) triangulado(s) com TBCA"
+               if alertas_val else "  ·  Todas as fontes TACO"),
+            expanded=bool(alertas_val),
+        ):
+            if alertas_val:
+                for alerta in alertas_val:
+                    nivel = alerta.get("nivel", "")
+                    cor_nivel = (
+                        "#3FB950" if "Alta" in nivel
+                        else "#E3B341" if "moderada" in nivel
+                        else "#F85149"
+                    )
+                    score_pct = int(alerta.get("score_match", 0) * 100)
+                    st.markdown(
+                        f"""<div style="border:1px solid rgba(255,200,50,0.3);
+                            border-left:3px solid #E3B341;border-radius:6px;
+                            padding:0.65rem 1rem;margin-bottom:0.6rem;
+                            background:rgba(255,200,50,0.06)">
+                        <strong>⚠ {alerta['ingrediente']}</strong> — dados TACO inconsistentes,
+                        triangulado com TBCA<br>
+                        <span style="font-size:0.82rem;color:var(--text-muted)">
+                          Motivo: {alerta['motivo']}<br>
+                          Match TBCA: <em>{alerta['match_tbca'] or 'não encontrado'}</em>
+                          ({score_pct}% similaridade)<br>
+                          Nível de confiança: <span style="color:{cor_nivel};font-weight:600">
+                            {nivel}</span>
+                        </span>""",
+                        unsafe_allow_html=True,
+                    )
+                    if alerta.get("corrigidos"):
+                        linhas = []
+                        for c in alerta["corrigidos"]:
+                            nut = c["nutriente"]
+                            linhas.append(
+                                f"• **{nut}**: {c['val_taco']:.4g} g (TACO) → "
+                                f"{c['val_tbca']:.4g} g (TBCA)"
+                            )
+                        st.markdown("\n".join(linhas))
+                    if alerta.get("divergencias"):
+                        with st.expander("Ver divergências detalhadas", expanded=False):
+                            for div in alerta["divergencias"]:
+                                st.caption(div)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+            for det in res["detalhes"]:
+                if not det.get("validacao", {}).get("triangulacao_aplicada"):
+                    fonte_label = det.get("fonte", "TACO")
+                    st.markdown(
+                        f'<span style="color:var(--text-muted);font-size:0.8rem">'
+                        f'✔ <strong>{det["nome"]}</strong> — '
+                        f'Fonte: {"TACO 4ª Edição — UNICAMP" if fonte_label == "TACO" else fonte_label}</span>',
+                        unsafe_allow_html=True,
+                    )
+
         sty.render_divider()
 
         col_dl, col_salvar = st.columns(2)
@@ -812,6 +903,7 @@ with tab1:
                         por_porcao=tabela["por_porcao"],
                         vd=vd_,
                         peso_total_gramas=res["peso_total"],
+                        alertas_validacao=res.get("alertas_validacao", []),
                     )
                 except Exception as e:
                     st.error(f"Erro ao gerar Excel: {e}")

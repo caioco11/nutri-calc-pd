@@ -140,8 +140,54 @@ def migrar_banco():
             _DENSIDADES_INICIAIS,
         )
 
+    # Criar tabela de auditoria de triangulações TACO×TBCA
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS auditoria_triangulacoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            receita_id INTEGER,
+            ingrediente TEXT,
+            match_tbca TEXT,
+            score_match REAL,
+            nutrientes_corrigidos TEXT,
+            fonte_por_nutriente TEXT,
+            score_confianca REAL,
+            nivel_confianca TEXT,
+            divergencias TEXT
+        );
+    """)
+
     conn.commit()
     conn.close()
+
+
+# ─── Conexão TBCA ──────────────────────────────────────────────────────────────
+
+def _conn_tbca() -> sqlite3.Connection | None:
+    """Retorna conexão ao TBCA ou None se banco não existir."""
+    tbca_path = os.path.join(ROOT_DIR, "tbca.db")
+    if not os.path.exists(tbca_path):
+        return None
+    conn = sqlite3.connect(tbca_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_composicao_tbca_por_id(tbca_id: int) -> dict | None:
+    """Retorna composição por 100g de um alimento TBCA pelo id."""
+    conn = _conn_tbca()
+    if conn is None:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT * FROM tbca_alimentos WHERE id=?", (tbca_id,)
+        ).fetchone()
+        conn.close()
+        if row:
+            return {k: row[k] for k in row.keys() if k in NUTRIENTES}
+        return None
+    except Exception:
+        return None
 
 
 # ─── Busca de Ingredientes ─────────────────────────────────────────────────────

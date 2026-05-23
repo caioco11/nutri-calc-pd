@@ -76,7 +76,11 @@ def convert_to_grams(valor: float, unidade: str, densidade: float = 1.0,
     return valor
 
 
-def calcular_composicao_receita(ingredientes: list[dict]) -> dict:
+def calcular_composicao_receita(
+    ingredientes: list[dict],
+    receita_id: int | None = None,
+    validar_taco: bool = True,
+) -> dict:
     """
     Calcula composição TOTAL somando contribuições de cada ingrediente.
 
@@ -86,44 +90,116 @@ def calcular_composicao_receita(ingredientes: list[dict]) -> dict:
             - quantidade_gramas: float
             - nome: str
             - fonte: str
+        receita_id: id da receita para registro de auditoria (opcional)
+        validar_taco: se True, executa validação TACO×TBCA em ingredientes TACO
 
     Returns:
         dict com:
             - nutrientes: {nutriente: valor_total_g_receita}
             - peso_total_gramas: float
-            - ingredientes_detalhes: lista com contribuição individual de cada ingrediente
+            - ingredientes_detalhes: lista com contribuição individual + metadados de fonte
+            - alertas_validacao: lista de alertas para exibição na UI
     """
     from modules.database import NUTRIENTES
+
+    # Importação lazy para evitar dependência circular
+    _validator = None
+    if validar_taco:
+        try:
+            from modules import validator as _validator
+        except ImportError:
+            _validator = None
 
     totais = {n: 0.0 for n in NUTRIENTES}
     peso_total = 0.0
     detalhes = []
+    alertas  = []
 
     for ing in ingredientes:
-        comp = ing.get("composicao_100g", {})
-        qtd  = _safe_float(ing.get("quantidade_gramas", 0))
-        fator = qtd / 100.0
+        comp_original = ing.get("composicao_100g", {})
+        qtd   = _safe_float(ing.get("quantidade_gramas", 0))
+        nome  = ing.get("nome", "?")
+        fonte = ing.get("fonte", "?")
 
+        # ── Validação TACO×TBCA ───────────────────────────────────────────────
+        metadados_validacao = {
+            "triangulacao_aplicada": False,
+            "nivel_confianca":       "—",
+            "match_tbca":            "",
+            "score_match":           0.0,
+            "nutrientes_corrigidos": [],
+            "fonte_primaria":        fonte,
+        }
+
+        comp = comp_original  # default: usar TACO sem modificação
+
+        if _validator and fonte == "TACO" and comp_original:
+            try:
+                inconsistencias = _validator.detectar_inconsistencias(nome, comp_original)
+                if inconsistencias["inconsistente"]:
+                    resultado_tri = _validator.triangular_com_tbca(
+                        nome, comp_original, inconsistencias
+                    )
+                    comp = resultado_tri["dados_finais"]
+
+                    metadados_validacao.update({
+                        "triangulacao_aplicada": resultado_tri["triangulacao_aplicada"],
+                        "nivel_confianca":       resultado_tri["nivel_confianca"],
+                        "match_tbca":            resultado_tri["match_tbca"],
+                        "score_match":           resultado_tri["score_match"],
+                        "nutrientes_corrigidos": resultado_tri["nutrientes_corrigidos"],
+                        "divergencias":          resultado_tri["divergencias"],
+                        "fonte_primaria":        "TACO+TBCA" if resultado_tri["triangulacao_aplicada"] else "TACO",
+                        "motivo_inconsistencia": inconsistencias["motivo"],
+                    })
+
+                    if resultado_tri["triangulacao_aplicada"]:
+                        alertas.append({
+                            "ingrediente":   nome,
+                            "motivo":        inconsistencias["motivo"],
+                            "match_tbca":    resultado_tri["match_tbca"],
+                            "score_match":   resultado_tri["score_match"],
+                            "corrigidos":    resultado_tri["nutrientes_corrigidos"],
+                            "nivel":         resultado_tri["nivel_confianca"],
+                            "divergencias":  resultado_tri["divergencias"],
+                        })
+
+                        if receita_id is not None:
+                            _validator.registrar_auditoria(
+                                receita_id, nome, resultado_tri
+                            )
+            except Exception as e:
+                print(f"[calculator] Validação falhou para '{nome}': {e}")
+
+        # ── Cálculo da contribuição ───────────────────────────────────────────
+        fator  = qtd / 100.0
         contrib = {}
         for nutriente in NUTRIENTES:
-            val = _safe_float(comp.get(nutriente, 0))
+            val          = _safe_float(comp.get(nutriente, 0))
             contribuicao = val * fator
             contrib[nutriente] = contribuicao
             totais[nutriente] += contribuicao
 
         peso_total += qtd
         detalhes.append({
-            "nome":              ing.get("nome", "?"),
-            "fonte":             ing.get("fonte", "?"),
-            "quantidade_gramas": qtd,
-            "composicao_100g":   comp,
-            "contribuicao":      contrib,
+            "nome":                  nome,
+            "fonte":                 fonte,
+            "quantidade_gramas":     qtd,
+            "composicao_100g":       comp,
+            "contribuicao":          contrib,
+            # campos extras de unidade original (passados pelo app.py)
+            "unidade_original":      ing.get("unidade_original", "g"),
+            "quantidade_original":   ing.get("quantidade_original"),
+            "densidade_utilizada":   ing.get("densidade_utilizada", 1.0),
+            # metadados de rastreabilidade de fonte
+            "validacao":             metadados_validacao,
         })
 
     return {
-        "nutrientes":          totais,
-        "peso_total_gramas":   peso_total,
+        "nutrientes":            totais,
+        "peso_total_gramas":     peso_total,
         "ingredientes_detalhes": detalhes,
+        "alertas_validacao":     alertas,
     }
 
 

@@ -66,6 +66,7 @@ def gerar_excel(
     por_porcao:        dict,
     vd:                dict,
     peso_total_gramas: float,
+    alertas_validacao: list[dict] | None = None,
 ) -> bytes:
     """
     Gera arquivo Excel com duas abas e retorna como bytes para download.
@@ -95,7 +96,8 @@ def gerar_excel(
     # ── Aba 2: Composição Técnica — P&D ─────────────────────────────────────────
     ws2 = wb.create_sheet("Composição Técnica — P&D")
     _construir_aba_pd(ws2, nome_produto, porcao_gramas, ingredientes_detalhes,
-                       por_100g, por_porcao, peso_total_gramas)
+                       por_100g, por_porcao, peso_total_gramas,
+                       alertas_validacao or [])
 
     # Retornar como bytes
     buffer = io.BytesIO()
@@ -262,9 +264,12 @@ def _construir_aba_rotulo(ws, nome_produto, porcao_gramas, num_porcoes,
     ws.row_dimensions[linha].height = 14
 
 
-def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_porcao, peso_total):
+def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_porcao,
+                      peso_total, alertas_validacao=None):
     """Constrói a aba de composição técnica detalhada."""
     from modules.database import NUTRIENTES
+    alertas_validacao = alertas_validacao or []
+    _nomes_triangulados = {a["ingrediente"] for a in alertas_validacao}
 
     NUTRIENTES_LABELS = {
         "umidade": "Umidade (%)", "energia_kcal": "Energia (kcal)",
@@ -282,7 +287,7 @@ def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_p
     }
 
     # Linha de título
-    total_cols = 4 + len(NUTRIENTES) * 2  # fixas + nutriente (abs + %)
+    total_cols = 7 + len(NUTRIENTES) * 2  # 7 fixas + nutriente (abs + %)
     ws.merge_cells(f"A1:{get_column_letter(min(total_cols, 30))}1")
     cel = ws.cell(1, 1, f"COMPOSIÇÃO TÉCNICA — {nome_produto.upper()}  |  P&D (USO INTERNO)")
     cel.font      = Font(name="Arial", bold=True, size=12, color="FFFFFF")
@@ -290,14 +295,14 @@ def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_p
     cel.alignment = _alinhar("center", "center")
     ws.row_dimensions[1].height = 22
 
-    # Colunas fixas: 6 (adicionamos Qtd. Original + Unidade)
-    _FIXED = 6
-    _NUT_START = _FIXED + 1  # = 7
+    # Colunas fixas: 7 (Ingrediente | Fonte | Qtd(g) | Qtd Original | Unidade | %Receita | Fonte Dados)
+    _FIXED = 7
+    _NUT_START = _FIXED + 1  # = 8
 
     # Linha de cabeçalho
     cabecalhos_fixos = [
         "Ingrediente", "Fonte", "Qtd. (g)",
-        "Qtd. Original", "Unidade", "% na Receita",
+        "Qtd. Original", "Unidade", "% na Receita", "Fonte dos Dados",
     ]
     cabecalhos_nut = []
     for n in NUTRIENTES:
@@ -321,6 +326,7 @@ def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_p
     ws.column_dimensions["D"].width = 12  # Qtd Original
     ws.column_dimensions["E"].width = 8   # Unidade
     ws.column_dimensions["F"].width = 13  # % na Receita
+    ws.column_dimensions["G"].width = 22  # Fonte dos Dados
     for i in range(len(NUTRIENTES) * 2):
         col_letter = get_column_letter(_NUT_START + i)
         ws.column_dimensions[col_letter].width = 11
@@ -347,13 +353,24 @@ def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_p
         if qtd_orig is None:
             qtd_orig = ing["quantidade_gramas"]
 
+        nome_ing   = ing.get("nome", "?")
+        fonte_ing  = ing.get("fonte", "?")
+        triangulou = nome_ing in _nomes_triangulados
+        if triangulou:
+            fonte_dados_label = "TACO + TBCA (triangulado)"
+        elif fonte_ing == "TACO":
+            fonte_dados_label = "TACO 4ª Ed. — UNICAMP"
+        else:
+            fonte_dados_label = "Fornecedor"
+
         dados_fixos = [
-            ing.get("nome", "?"),
-            ing.get("fonte", "?"),
+            nome_ing,
+            fonte_ing,
             round(float(ing["quantidade_gramas"]), 4),
             round(float(qtd_orig), 4),
             unidade_orig,
             f"{pct_receita:.1f}%",
+            fonte_dados_label,
         ]
 
         for col, val in enumerate(dados_fixos, 1):
@@ -448,3 +465,42 @@ def _construir_aba_pd(ws, nome_produto, porcao_gramas, detalhes, por_100g, por_p
         cel2.alignment = _alinhar("center", "center")
 
     ws.row_dimensions[linha_100g].height = 16
+
+    # ── Rodapé de auditoria ──────────────────────────────────────────────────
+    linha_rodape = linha_100g + 2
+    n_tri = len(alertas_validacao)
+    tem_tbca = n_tri > 0
+
+    rodape_fontes = (
+        "Fontes: TACO 4ª Edição (UNICAMP, 2011) | TBCA 7.0 (USP/FCF, 2023)"
+        if tem_tbca else
+        "Fonte: TACO 4ª Edição (UNICAMP, 2011)"
+    )
+    if tem_tbca:
+        rodape_fontes += (
+            f" | Triangulação automática aplicada em {n_tri} ingrediente(s): "
+            + ", ".join(a["ingrediente"] for a in alertas_validacao)
+        )
+    rodape_fontes += " | Recomenda-se validação por nutricionista habilitado (CRN)."
+
+    col_total = _FIXED + len(NUTRIENTES) * 2
+    ws.merge_cells(f"A{linha_rodape}:{get_column_letter(min(col_total, 30))}{linha_rodape}")
+    cel_rod = ws.cell(linha_rodape, 1, rodape_fontes)
+    cel_rod.font      = Font(name="Arial", italic=True, size=8, color="555555")
+    cel_rod.alignment = _alinhar("left", "top", wrap=True)
+    ws.row_dimensions[linha_rodape].height = 30
+
+    if tem_tbca:
+        linha_rod2 = linha_rodape + 1
+        ws.merge_cells(
+            f"A{linha_rod2}:{get_column_letter(min(col_total, 30))}{linha_rod2}"
+        )
+        cel_rod2 = ws.cell(
+            linha_rod2, 1,
+            "⚠  Ingredientes com triangulação TACO+TBCA: os valores nutricionais foram "
+            "corrigidos automaticamente onde a TACO apresentava dados incompletos. "
+            "Verifique a seção 'Rastreabilidade das Fontes' no sistema antes de emitir rótulo."
+        )
+        cel_rod2.font      = Font(name="Arial", italic=True, size=8, color="C0392B")
+        cel_rod2.alignment = _alinhar("left", "top", wrap=True)
+        ws.row_dimensions[linha_rod2].height = 30
